@@ -1,0 +1,828 @@
+<!DOCTYPE html>
+<html>
+  <head>
+    <title>Kotlin - Context Receivers</title>
+    <meta charset="utf-8">
+    <style>
+      /* @import url(https://fonts.googleapis.com/css?family=Yanone+Kaffeesatz);
+      @import url(https://fonts.googleapis.com/css?family=Droid+Serif:400,700,400italic);
+      @import url(https://fonts.googleapis.com/css?family=Ubuntu+Mono:400,700,400italic); */
+      @import url(css/metropolis.css);
+    </style>
+  </head>
+  <body>
+    <textarea id="source">
+
+class: center, middle, title-slide
+count: false
+
+# How .grey[**context receivers**]
+
+## solve the nested configuration problem <br />.grey[(and two more!)]
+
+<br />
+
+.less-line-height[
+Alejandro Serrano @ Kotlin Meetup XL
+
+.grey[🐦 @trupill - 🐈‍⬛ serras - 👨‍💻 47 Degrees]
+]
+
+---
+
+# 🧩 Context receivers
+
+New Kotlin feature in 1.6.20 and 1.7
+
+---
+
+# 🧩 Context receivers
+
+**Coolest** Kotlin feature in 1.6.20 and 1.7
+
+--
+
+## Lots of use cases <br /> .grey[Cross-cutting concerns]
+
+🪢 Dependency injection <br /> &nbsp;&nbsp;&nbsp;&nbsp; ❥ Nested configurations <br />
+🧬 Detached interfaces <br />
+⚡ Effect scopes <br /> &nbsp;&nbsp;&nbsp;&nbsp; ❥ Describing typed errors
+
+---
+
+# 📒 Logging
+
+Prime example of .grey[cross-cutting concern]
+
+--
+
+- It's **never** part of the **main** domain
+- If explicit, it pollutes the code
+  - We want to **hide** any boilerplate around it
+- Usually **re-used** across several domains or modules within the same application
+
+---
+
+# 📒 Logging
+
+Prime example of .grey[cross-cutting concern]
+
+```kotlin
+interface Logger {
+  suspend fun log(
+    level: LogLevel, 
+    subject: String, 
+    message: String
+  )
+}
+```
+
+--
+
+.smaller[Why `suspend` in `log`? If it may do I/O, I always add it]
+
+---
+
+# 🧩 Context receivers in use
+
+1️⃣ Add to the signature where needed
+
+.code70[
+```kotlin
+context(Logger)
+suspend fun downloadData(url: URL): Info? =
+```
+]
+
+--
+
+2️⃣ The interface is available in the body
+
+.code70[
+```kotlin
+  request(url).also {
+    when(it) {
+      null -> log(LogLevel.CRITICAL, ..., ...)
+    }
+  }?.let { parseInfo(it) }
+```
+]
+
+---
+
+# 🧩 Context receivers in use
+
+3️⃣ You can call other functions with the same context without further boilerplate
+
+.code70[
+```kotlin
+context(Logger)
+suspend fun initializeApp(): App? {
+  downloadData(App.DATA_URL)?.let {
+    downloadAvatar(it.avatarImage)
+  }
+}
+```
+]
+
+---
+
+# 🧩 Context receivers in use
+
+4️⃣ Inject — provide an impl. — using `with`
+
+.code70[
+```kotlin
+class ConsoleLogger(): Logger { ... }
+
+suspend fun main() {
+  with(ConsoleLogger()) {
+    config = initializeApp()
+    ...
+  }
+}
+```
+]
+
+---
+
+# 📩 Implicit receivers
+
+## What is `this`?
+
+--
+
+Answers the need of implicit supporting values
+
+.code80[
+```kotlin
+class Database {             // ← dispatch
+  context(Logger)            // ← context
+  suspend fun User.save() {  // ← extension
+    // if you need to refer to one
+    this@Logger.log(...)
+  }
+}
+```
+]
+
+---
+
+# 📩 Implicit receivers
+
+## What is `this`?
+
+Answers the need of implicit supporting values
+
+.code80[
+```kotlin
+class Database {             // ← dispatch
+  context(Logger)            // ← context
+  suspend fun User.save() {  // ← extension
+    // in the body, this has type
+    // Database & Logger & User
+  }
+}
+```
+]
+
+---
+
+# 📩 Implicit receivers
+
+## What is `this`?
+
+**Dispatch**: where the method is declared <br /> &nbsp;&nbsp; non-existing for top-level functions
+
+**Extension**: introduce with `fun Type.name(...)` <br /> &nbsp;&nbsp; adds the ability to call with `.`
+
+**Context**: extensions on steroids <br /> &nbsp;&nbsp; values come from `with` <br /> &nbsp;&nbsp; syntax with `.` not available
+
+---
+
+class: center, middle, title-slide
+
+# 🪢 Dependency injection
+
+---
+
+# 🪢 Dependency injection
+
+## .grey[Basic use case for context receivers]
+
+.code70[
+```kotlin
+context(Logger, HttpService)
+fun login(usr: String, pass: String): User? {
+  ... // compute password hash
+  val params = mapOf("username" to usr, 
+                     "password" to hash)
+  val r = httpPost("/login", params).getOrNull()
+  return r?.let { result ->
+    log(LogLevel.INFO, "login", "successful")
+    parseUser(result)
+  }
+}
+```
+]
+
+---
+
+# 🪢 Dependency injection
+
+## .grey[Basic use case for context receivers]
+
+.margin-top[
+🧶 Context declares the services you require <br />
+🪡 `with` injects the values
+]
+
+Those two rules provide many benefits <br /> over dependency injection frameworks
+
+---
+
+# 🧶 Declare the services you require
+
+The required services become part of the function signature with `context`
+
+- The compiler can check good usage
+- The IDE can help you diagnosing problems
+- Explicit documentation about what the function may do
+
+---
+
+# 🧶 Declare the services you require
+
+Some contexts may depend on others
+
+.code70[
+```kotlin
+context(Logger)
+class NetworkHttpService(): HttpService {
+  ...
+}
+```
+]
+
+--
+
+This imposes _ordering_ at injection time
+
+.code70[
+```kotlin
+with(ConsoleLogger()) {
+  with(NetworkHttpService()) { ... }
+}
+```
+]
+
+---
+
+# 🪡 Inject the values using `with`
+
+<br />
+
+.font150[
+**`with` is just regular Kotlin!**
+]
+
+This makes many patterns easier to achieve
+
+---
+
+# 🪡 Inject the values using `with`
+
+## .grey[Hassle-free mocking]
+
+.code70[
+```kotlin
+class AlwaysFails : NetworkHttpService {
+  override suspend fun httpPost(url: URL) = null
+}
+```
+
+Check your code without any actual connection
+
+```kotlin
+with(AlwaysFails()) {
+  // test that things work when network is down
+}
+```
+]
+
+---
+
+# 🪡 Inject the values using `with`
+
+## .grey[Override part of a service]
+
+We want to change the minimum logging level for some piece of code
+
+--
+
+.code60[
+```kotlin
+class OnlyImportantLogger(val logger: Logger): Logger {
+  override suspend
+  fun log(lvl: LogLevel, sb: String, msg: String) =
+    when (lvl) {
+      LogLevel.INFO, LogLevel.WARN -> { }
+      else -> logger.log(lvl, sb, msg)
+    }
+}
+```
+]
+
+---
+
+# 🪡 Inject the values using `with`
+
+## .grey[Override part of a service]
+
+We want to change the minimum logging level for some piece of code
+
+.code70[
+```kotlin
+context(Logger)
+fun User.logOut() {
+  ... // do the important stuff
+  with(OnlyImportantLogger(this@Logger)) {
+    ... // don't care if it fails
+  }
+}
+```
+]
+
+---
+
+# 🪡 Inject the values using `with`
+
+## .grey[Combine services]
+
+We often want to put some services together
+
+- As a _module_, to alleviate boilerplate
+- At the _initialization_ step in your app.
+  - Based on some configuration
+
+.code70[
+```kotlin
+data class AppModule(
+  val logger: Logger, 
+  val http: HttpService
+)
+```
+]
+
+---
+
+# 🪡 Inject the values using `with`
+
+## .grey[Combine services]
+
+.margin-top[
+- At the _initialization_ step in your app.
+  - Based on some configuration
+]
+
+.code80[
+```kotlin
+suspend fun main() {
+  val app = initialize()
+  with(app.logger, app.http, ...) {
+    // do the job
+  }
+}
+```
+]
+
+---
+
+# 🪡 Inject the values using `with`
+
+## .grey[Combine services] using delegation
+
+.code70[
+```kotlin
+data class AppModule(
+  val logger: Logger, 
+  val http: HttpService
+): Logger by logger, HttpService by http
+```
+]
+
+--
+
+.code70[
+```kotlin
+suspend fun main() {
+  val app = initialize()
+  with(app) {
+    // do the job
+  }
+}
+```
+]
+
+---
+
+# 🪡 Inject the values using `with`
+
+## .grey[Combine services] using delegation
+
+.code70[
+```kotlin
+data class AppModule(
+  val logger: Logger, 
+  val http: HttpService
+): Logger by logger, HttpService by http
+```
+]
+
+.code70[
+```kotlin
+suspend fun main() {
+  with(initialize()) {
+    // do the job
+  }
+}
+```
+]
+
+---
+
+# 🪢 Context receivers
+
+## .grey[solve the nested configuration problem]
+
+Boilerplate to handle services which depend on others, or not clear why it works
+
+.margin-top[
+- Services that depend on others declare so
+  - The compiler _enforces_ the ordering
+- No need to "extract" from a bigger context
+  - Problematic with implicits / type classes
+]
+
+---
+
+class: center, middle, title-slide
+
+# 🧬 Detached interfaces
+
+# &nbsp;&nbsp;&nbsp;&nbsp; .grey[Type Classes]
+
+---
+
+# ⚖️ Comparable classes
+
+.font80[
+> This interface imposes a total ordering on the objects of each class that implements it. This ordering is referred to as the class's _natural ordering_.
+]
+
+.code70[
+```kotlin
+interface Comparable<T> {
+  fun compareTo(other: T): Int
+}
+
+fun <T: Comparable<T>> T.greaterThan(other: T) = 
+  compareTo(other) > 0
+```
+]
+
+--
+
+1. What if you do **not control** the class?
+2. Or there's **more than one** such ordering?
+
+---
+
+# 🧬 Detached interfaces
+
+## .grey[Require `Comparable` as part of the context]
+
+```kotlin
+interface Comparable<T> {
+  fun compareTo(one: T, other: T): Int
+}
+
+context(Comparable<T>)
+fun <T> T.greaterThan(other: T) =
+  compareTo(this, other) > 0
+```
+
+---
+
+# 🎛️ Lack of control
+
+.margin-top[
+- New serialization format
+- Different way to log things as strings
+]
+
+You cannot make `Boolean` implement those! <br /> (or any class you hadn't written)
+
+--
+
+.code70[
+```kotlin
+val booleanPretty = object : Pretty<Boolean> {
+  override fun Boolean.pretty() = 
+    if (this) "verdad" else "mentira"
+}
+```
+]
+
+---
+
+# 🎛️ Lack of control
+
+.code70[
+```kotlin
+val booleanPretty = object : Pretty<Boolean> {
+  override fun Boolean.pretty() = 
+    if (this) "verdad" else "mentira"
+}
+```
+]
+
+Annoying to use because of manual injection
+
+.code70[
+```kotlin
+with (booleanPretty, intPretty) { ... }
+```
+]
+
+Arrow developers are working on a solution!
+
+---
+
+# 🍱 There's more than one ordering
+
+.code70[
+```kotlin
+fun <T : Comparable<T>> MutableList<T>.sort()
+```
+]
+
+This cannot be re-used to sort
+
+- ... backwards
+- ... using a specific key
+
+We are tied to the "natural" ordering
+
+---
+
+# 🧑‍⚖️ The Comparator
+
+## .grey[There's more than one ordering]
+
+```kotlin
+// does it ring a bell?
+interface Comparator<T> {
+  fun compare(a: T, b: T): Int
+}
+
+fun <T> MutableList<T>.sortWith(
+  comparator: Comparator<in T>
+)
+```
+
+We end up duplicating each function!
+
+---
+
+# 🍱 There's more than one ordering
+
+.code50[
+```kotlin
+interface Comparable<T> {
+  fun compareTo(one: T, other: T): Int
+}
+```
+]
+
+.code70[
+```kotlin
+context(Comparable<T>)
+fun <T> reversed() = object : Comparable<T> {
+  override fun compareTo(one: T, other: T): Int =
+    this@Comparable.compareTo(one, other)
+}
+```
+]
+
+--
+
+Replace the ordering with the desired one
+
+.code70[
+```kotlin
+with (reversed()) { list.sort() }
+```
+]
+
+---
+
+# 🧬 Detached interfaces
+
+Useful for "adjectives" or "-ables"
+
+- Detach the interface from the class
+- Increased extensibility
+
+Similar to type classes in Haskell <br /> and `given`s in Scala 3
+
+---
+
+class: center, middle, title-slide
+
+# ⚡ Typed error scopes
+
+# &nbsp;&nbsp;&nbsp;&nbsp; .grey[Effects]
+
+---
+
+# 🔀 The error dichotomy
+
+## Two ways to handle errors in Kotlin
+
+⚡ **Exceptions**
+
+- Untyped by default (not in Java)
+- No code if you are not handling them
+- Special syntax: `try`, `catch`
+
+---
+
+# 🔀 The error dichotomy
+
+## Two ways to handle errors in Kotlin
+
+⚡ **Exceptions**
+
+🏷️ **Tagged types** (`?`, `Result`, `Either`)
+
+- Explicitly typed
+- No special syntax, `when` is enough
+- Some amount of boilerplate
+
+---
+
+# 🔀 The error dichotomy
+
+## What if we could have the best of both?
+
+⚡ **Exceptions**
+
+- No code if you are not handling them
+
+🏷️ **Tagged types** (`?`, `Result`, `Either`)
+
+- .grey[**Explicitly typed**]
+- No special syntax, `when` is enough
+
+---
+
+# ⚡ Error scopes &nbsp;&nbsp;&nbsp; .font60[Arrow Core 🌐 `arrow-kt.io`]
+
+🏷️ Explicitly typed
+
+.code60[
+.little-margin-top[
+```kotlin
+context(EffectScope<FileError>)
+suspend fun readFile(path: Path): Content {
+  ...
+}
+```
+]
+]
+
+⚡ No code if you are not handling errors
+
+.code60[
+.little-margin-top[
+```kotlin
+context(EffectScope<FileError>)
+suspend fun allFiles(vararg path: Path): List<Content> =
+  path.map { readFile(it) }
+```
+]
+]
+
+.font60[Example based on Simon Vergauwen's blog @ `nomisrev.github.io`]
+
+---
+
+# ⚡ Error scopes &nbsp;&nbsp;&nbsp; .font60[Arrow Core 🌐 `arrow-kt.io`]
+
+🏷️ Explicitly typed
+
+.code60[
+```kotlin
+sealed interface FileError
+data class FileDoesNotExist(val path: Path): FileError
+data class PermissionError(...): FileError
+
+context(EffectScope<FileError>)
+suspend fun readFile(path: Path): Content {
+  if (!path.exists()) shift(FileDoesNotExist(path))
+  ... // keep going
+}
+```
+]
+
+.font60[Example based on Simon Vergauwen's blog @ `nomisrev.github.io`]
+
+---
+
+# ⚡ Error scopes &nbsp;&nbsp;&nbsp; .font60[Arrow Core 🌐 `arrow-kt.io`]
+
+🏷️ No special syntax, `when` is enough
+
+.code70[
+```kotlin
+when (effect { allFiles(paths) }.orNull()) {
+  null -> ...  // something went wrong
+  else -> ...  // everything ok
+}
+```
+]
+
+--
+
+.code70[
+```kotlin
+when (effect { allFiles(paths) }.fold(
+  { problem -> ...  /* something went wrong */ },
+  { result  -> ...  /* everything ok */ }
+)
+```
+]
+
+---
+
+# 🎭 Everything is a context
+
+.code65[
+```kotlin
+fun CoroutineScope.launch(
+  context: CoroutineContext = ...,
+  start: CoroutineStart = ...,
+  block: suspend CoroutineScope.() -> Unit
+): Job
+```
+]
+
+KotlinX Coroutines uses extension receivers
+
+---
+
+# 🎭 Everything is a context
+
+.code65[
+```kotlin
+context(CoroutineScope) fun launch(
+  context: CoroutineContext = ...,
+  start: CoroutineStart = ...,
+  block: context(CoroutineScope) suspend () -> Unit
+): Job
+```
+]
+
+`CoroutineScope` provides a _service_ or _effect_
+
+- Creation and mgmt. of concurrent jobs
+
+---
+
+# 🧩 Summary
+
+.grey[**Context receivers**] are awesome
+
+🪢 _Dependency injection_ <br /> Checked by the compiler, easier modification
+
+🧬 _Detached interfaces_ <br /> Enable new forms of extensibility
+
+⚡ _Effect scopes_ <br /> Simpler than `Either`, with the same guarantees
+
+---
+
+class: center, middle, title-slide
+
+# 🤩 It's been a pleasure
+
+## Enjoy the rest of the talks!
+
+    </textarea>
+    <script src="https://remarkjs.com/downloads/remark-latest.min.js">
+    </script>
+    <script>
+      var slideshow = remark.create();
+    </script>
+  </body>
+</html>

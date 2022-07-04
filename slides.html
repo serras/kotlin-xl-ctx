@@ -209,6 +209,26 @@ class Database {             // ← dispatch
 
 ## What is `this`?
 
+Answers the need of implicit supporting values
+
+.code80[
+```kotlin
+class Database {             // ← dispatch
+  context(logger@Logger)     // ← context
+  suspend fun User.save() {  // ← extension
+    // you can use context tags
+    logger.log(...)
+  }
+}
+```
+]
+
+---
+
+# 📩 Implicit receivers
+
+## What is `this`?
+
 **Dispatch**: where the method is declared <br /> &nbsp;&nbsp; non-existing for top-level functions
 
 **Extension**: introduce with `fun Type.name(...)` <br /> &nbsp;&nbsp; adds the ability to call with `.`
@@ -497,7 +517,7 @@ class: center, middle, title-slide
 > This interface imposes a total ordering on the objects of each class that implements it. This ordering is referred to as the class's _natural ordering_.
 ]
 
-.code70[
+.code60[
 ```kotlin
 interface Comparable<T> {
   fun compareTo(other: T): Int
@@ -519,6 +539,7 @@ fun <T: Comparable<T>> T.greaterThan(other: T) =
 
 ## .grey[Require `Comparable` as part of the context]
 
+.code70[
 ```kotlin
 interface Comparable<T> {
   fun compareTo(one: T, other: T): Int
@@ -528,6 +549,7 @@ context(Comparable<T>)
 fun <T> T.greaterThan(other: T) =
   compareTo(this, other) > 0
 ```
+]
 
 ---
 
@@ -579,6 +601,27 @@ Arrow developers are working on a solution!
 
 ---
 
+# 🎛️ Lack of control
+
+Arrow developers are working on a solution!
+
+### .grey[Arrow Inject] (work in progress)
+
+.code70[
+```kotlin
+@Provider
+val booleanPretty = ...
+```
+
+Bring the `@Provider`s into scope
+
+```kotlin
+contextual<Pretty> { ... }
+```
+]
+
+---
+
 # 🍱 There's more than one ordering
 
 .code70[
@@ -600,6 +643,7 @@ We are tied to the "natural" ordering
 
 ## .grey[There's more than one ordering]
 
+.code70[
 ```kotlin
 // does it ring a bell?
 interface Comparator<T> {
@@ -610,6 +654,7 @@ fun <T> MutableList<T>.sortWith(
   comparator: Comparator<in T>
 )
 ```
+]
 
 We end up duplicating each function!
 
